@@ -1,0 +1,59 @@
+version: '3.5'
+
+services:
+  db:
+    image: postgres:12
+    environment:
+      POSTGRES_USER: ckan
+      POSTGRES_PASSWORD: ckan
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d
+
+  solr:
+    image: ckan/ckan-solr:2.9-solr9
+    environment:
+      - CKAN_SOLR_SCHEMA_VERSION=2.9
+    volumes:
+      - ckan-solr-data:/var/solr
+
+  redis:
+    image: redis:alpine
+
+  ckan:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - db
+      - solr
+      - redis
+    environment:
+      - CKAN_SITE_URL=http://localhost:5000
+      - CKAN_SQLALCHEMY_URL=postgresql://ckan:ckan@db/ckan
+      - CKAN_DATASTORE_WRITE_URL=postgresql://ckan:ckan@db/datastore
+      - CKAN_DATASTORE_READ_URL=postgresql://ckan:ckan@db/datastore
+      - CKAN_REDIS_URL=redis://redis:6379/0
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./ckan.ini:/etc/ckan/ckan.ini
+
+  datastore-init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - db
+    environment:
+      CKAN_INI: /etc/ckan/ckan.ini
+    volumes:
+      - ./ckan.ini:/etc/ckan/ckan.ini
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "ckan -c /etc/ckan/ckan.ini datastore set-permissions | PGPASSWORD=ckan psql -h db -U ckan -d datastore"
+
+volumes:
+  pg_data:
+  ckan-solr-data:
+
